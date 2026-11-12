@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>작은 던전</title>
+<style>
+  /* 아이폰 사파리: 길게 눌러 복사 메뉴가 뜨거나 글자가 선택되지 않게 */
+  *, *::before, *::after { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    width:100%; height:100%; overflow:hidden; background:#000;
+    font-family:-apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color:#fff;
+    touch-action:none;
+  }
+  #stage { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:6px 8px; }
+  #wrap { position:relative; background:#000; touch-action:none; }
+  #game { display:block; touch-action:none; image-rendering:pixelated; }
+  /* 창 안의 글자·버튼은 게임 화면 크기에 비례한다 (--s = 화면 너비 / 240) */
+  #overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:calc(7px * var(--s,1)); text-align:center; padding:calc(10px * var(--s,1)); background:rgba(12,8,22,.92); overflow:hidden; }
+  #overlay.hidden { display:none; }
+  #overlay h1 { font-size:calc(26px * var(--s,1)); font-weight:900; letter-spacing:.02em; color:#ffc860; text-shadow:0 calc(2px * var(--s,1)) 0 #6a3a0a; line-height:1.15; }
+  #overlay h2 { font-size:calc(20px * var(--s,1)); font-weight:900; }
+  #overlay p { font-size:calc(11px * var(--s,1)); color:#e6e6e6; line-height:1.55; }
+  #overlay p b { color:#ffd23a; font-weight:700; }
+  #overlay .big { font-size:calc(24px * var(--s,1)); font-weight:900; color:#ffd23a; }
+  #overlay button { background:linear-gradient(180deg,#ffe8b0,#e89a3a); color:#3a1a00; font-weight:900; font-size:calc(14px * var(--s,1)); border:none; border-radius:999px; padding:calc(8px * var(--s,1)) calc(22px * var(--s,1)); box-shadow:0 calc(3px * var(--s,1)) 0 #8a4a0a; cursor:pointer; }
+  #overlay button:active { transform:translateY(2px); box-shadow:0 1px 0 #8a4a0a; }
+  #overlay button.sub { background:rgba(255,255,255,.14); color:#fff; box-shadow:none; border:1px solid rgba(255,255,255,.3); font-size:calc(12px * var(--s,1)); padding:calc(6px * var(--s,1)) calc(14px * var(--s,1)); }
+  #overlay button:disabled { opacity:.35; box-shadow:none; }
+  #overlay .row { display:flex; gap:calc(8px * var(--s,1)); justify-content:center; flex-wrap:wrap; }
+  #overlay .cards { display:flex; flex-direction:column; gap:calc(6px * var(--s,1)); width:94%; }
+  #overlay .card { display:flex; align-items:center; gap:calc(10px * var(--s,1)); text-align:left; background:linear-gradient(180deg,#4a3a2a,#2a2018); color:#fff; border:2px solid #c89a5a; border-radius:calc(10px * var(--s,1)); padding:calc(7px * var(--s,1)) calc(10px * var(--s,1)); box-shadow:none; font-weight:700; width:100%; }
+  #overlay .card:active { transform:scale(.98); }
+  #overlay .card .ico { font-size:calc(24px * var(--s,1)); width:calc(32px * var(--s,1)); text-align:center; }
+  #overlay .card .nm { font-size:calc(13px * var(--s,1)); }
+  #overlay .card .nm small { color:#ffd23a; margin-left:calc(6px * var(--s,1)); font-size:calc(10px * var(--s,1)); }
+  #overlay .card .ds { font-size:calc(10px * var(--s,1)); color:#e0d0b8; font-weight:500; line-height:1.4; }
+  #overlay .opt { padding:calc(5px * var(--s,1)) calc(14px * var(--s,1)); font-size:calc(12px * var(--s,1)); background:rgba(255,255,255,.14); color:#fff; box-shadow:none; border:1px solid rgba(255,255,255,.3); }
+  #top { position:absolute; right:3px; top:20px; display:flex; gap:6px; z-index:2; }
+  #top button { position:relative; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.25); color:#fff; width:calc(26px * var(--s,1)); height:calc(26px * var(--s,1)); border-radius:8px; font-size:calc(11px * var(--s,1)); cursor:pointer; }
+  #top button::after { content:''; position:absolute; inset:-7px -4px; }
+  /* 폰 조작판: 왼쪽 방향 패드(십자) · 오른쪽 가방과 대기/내려가기 */
+  #controls { display:none; width:100%; justify-content:space-between; align-items:center; padding:0 12px; gap:12px; }
+  #dpad { display:grid; grid-template-columns:repeat(3, 56px); grid-template-rows:repeat(3, 56px); gap:4px; touch-action:none; }
+  #dpad button, #acts button { border-radius:16px; border:2px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:rgba(255,255,255,.9); font-size:22px; touch-action:none; }
+  #dpad .u { grid-column:2; grid-row:1; } #dpad .l { grid-column:1; grid-row:2; } #dpad .r { grid-column:3; grid-row:2; } #dpad .d { grid-column:2; grid-row:3; }
+  #acts { display:flex; flex-direction:column; gap:8px; }
+  #acts button { width:92px; height:66px; font-size:15px; font-weight:900; line-height:1.25; }
+  #waitBt { background:rgba(255,200,100,.25) !important; border-color:rgba(255,215,140,.55) !important; }
+  #dpad button.on, #acts button.on { background:rgba(255,210,58,.45) !important; color:#fff; transform:scale(.95); }
+  .pc { display:none; }
+  @media (pointer:fine) { .pc { display:inline; } .touch { display:none; } }
+  @media (pointer:coarse) { #controls { display:flex; } }
+  /* 가로 화면(폰): 왼쪽 방향 패드 · 가운데 던전 · 오른쪽 버튼 */
+  @media (pointer:coarse) and (orientation:landscape) {
+    #stage { flex-direction:row; gap:8px; padding:4px 8px; }
+    #stage > #controls { display:contents; }
+    #dpad { order:0; flex-shrink:0; grid-template-columns:repeat(3, 48px); grid-template-rows:repeat(3, 48px); }
+    #wrap { order:1; flex-shrink:0; }
+    #acts { order:2; flex-shrink:0; }
+    #acts button { width:78px; height:58px; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="wrap">
+    <canvas id="game"></canvas>
+    <div id="top">
+      <button id="muteBtn" title="소리 (M)">🔊</button>
+      <button id="pauseBtn" title="일시정지 (P)">⏸</button>
+    </div>
+    <div id="overlay"></div>
+  </div>
+  <div id="controls">
+    <div id="dpad"><button class="u" data-d="0,-1">▲</button><button class="l" data-d="-1,0">◀</button><button class="r" data-d="1,0">▶</button><button class="d" data-d="0,1">▼</button></div>
+    <div id="acts"><button id="bagBt">🎒 가방</button><button id="waitBt">⏳ 대기</button></div>
+  </div>
+</div>
+<script src="logic.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
