@@ -42,13 +42,16 @@
   #top button::after { content:''; position:absolute; inset:-7px -4px; }
   /* 폰 조작판: 왼쪽 방향 패드(십자) · 오른쪽 가방과 대기/내려가기 */
   #controls { display:none; width:100%; justify-content:space-between; align-items:center; padding:0 12px; gap:12px; }
-  #dpad { display:grid; grid-template-columns:repeat(3, 56px); grid-template-rows:repeat(3, 56px); gap:4px; touch-action:none; }
-  #dpad button, #acts button { border-radius:16px; border:2px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:rgba(255,255,255,.9); font-size:22px; touch-action:none; }
-  #dpad .u { grid-column:2; grid-row:1; } #dpad .l { grid-column:1; grid-row:2; } #dpad .r { grid-column:3; grid-row:2; } #dpad .d { grid-column:2; grid-row:3; }
+  /* 조이스틱: 밀면 그 방향으로 계속 걷는다 (가로·세로 중 더 많이 민 쪽) */
+  #stick { position:relative; width:150px; height:150px; border-radius:50%; background:radial-gradient(circle, rgba(255,255,255,.14), rgba(255,255,255,.04)); border:2px solid rgba(255,255,255,.28); touch-action:none; flex-shrink:0; }
+  #stick .a { position:absolute; color:rgba(255,255,255,.4); font-size:15px; line-height:1; }
+  #stick .a.u { left:50%; top:8px; transform:translateX(-50%); } #stick .a.d { left:50%; bottom:8px; transform:translateX(-50%); } #stick .a.l { top:50%; left:10px; transform:translateY(-50%); } #stick .a.r { top:50%; right:10px; transform:translateY(-50%); }
+  #knob { position:absolute; left:50%; top:50%; width:64px; height:64px; margin:-32px 0 0 -32px; border-radius:50%; background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.7), rgba(255,255,255,.3)); border:2px solid rgba(255,255,255,.65); box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  #acts button { border-radius:16px; border:2px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:rgba(255,255,255,.9); font-size:22px; touch-action:none; }
   #acts { display:flex; flex-direction:column; gap:8px; }
   #acts button { width:92px; height:66px; font-size:15px; font-weight:900; line-height:1.25; }
   #waitBt { background:rgba(255,200,100,.25) !important; border-color:rgba(255,215,140,.55) !important; }
-  #dpad button.on, #acts button.on { background:rgba(255,210,58,.45) !important; color:#fff; transform:scale(.95); }
+  #acts button.on { background:rgba(255,210,58,.45) !important; color:#fff; transform:scale(.95); }
   .pc { display:none; }
   @media (pointer:fine) { .pc { display:inline; } .touch { display:none; } }
   @media (pointer:coarse) { #controls { display:flex; } }
@@ -56,7 +59,7 @@
   @media (pointer:coarse) and (orientation:landscape) {
     #stage { flex-direction:row; gap:8px; padding:4px 8px; }
     #stage > #controls { display:contents; }
-    #dpad { order:0; flex-shrink:0; grid-template-columns:repeat(3, 48px); grid-template-rows:repeat(3, 48px); }
+    #stick { order:0; width:124px; height:124px; } #knob { width:52px; height:52px; margin:-26px 0 0 -26px; }
     #wrap { order:1; flex-shrink:0; }
     #acts { order:2; flex-shrink:0; }
     #acts button { width:78px; height:58px; }
@@ -74,7 +77,7 @@
     <div id="overlay"></div>
   </div>
   <div id="controls">
-    <div id="dpad"><button class="u" data-d="0,-1">▲</button><button class="l" data-d="-1,0">◀</button><button class="r" data-d="1,0">▶</button><button class="d" data-d="0,1">▼</button></div>
+    <div id="stick"><span class="a u">▲</span><span class="a d">▼</span><span class="a l">◀</span><span class="a r">▶</span><div id="knob"></div></div>
     <div id="acts"><button id="bagBt">🎒 가방</button><button id="waitBt">⏳ 대기</button></div>
   </div>
 </div>

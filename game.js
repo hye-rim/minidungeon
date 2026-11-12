@@ -18,7 +18,7 @@ function fit() {
   const controls = $('controls');
   const land = landscapeTouch();
   const ctrlH = land || getComputedStyle(controls).display === 'none' ? 0 : controls.offsetHeight + 8;
-  const ctrlW = land ? $('dpad').offsetWidth + $('acts').offsetWidth + 24 : 0;
+  const ctrlW = land ? $('stick').offsetWidth + $('acts').offsetWidth + 24 : 0;
   const scale = Math.min((innerWidth - 16 - ctrlW) / CW, (innerHeight - (land ? 8 : 16) - ctrlH) / CHH);
   const cssW = Math.max(150, Math.floor(CW * scale)), cssH = Math.floor(cssW * CHH / CW);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -82,7 +82,7 @@ let logs = [], fxs = [], clock = 0, shake = 0, bossWarned = false;
 let banner = { text: '', sub: '', t: 0, color: '#fff' };
 
 /* @test-hooks:start */
-window.__md = { get G() { return G; }, get state() { return state; }, L, setG(g) { G = g; }, act: (a) => doAct(a), start: (o) => startGame(o) };
+window.__md = { get G() { return G; }, get state() { return state; }, L, setG(g) { G = g; }, act: (a) => doAct(a), start: (o) => startGame(o), get joy() { return joy; }, tick: (dt) => joyTick(dt) };
 /* @test-hooks:end */
 
 // ---------- 입력: 방향 패드 · 방향키/WASD · 화면 스와이프 · 화면 누르기(그 쪽으로 한 걸음) ----------
@@ -99,40 +99,65 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'e' || e.key === 'E' || e.key === 'i' || e.key === 'I') openBag();
   else if (e.key === 'q' || e.key === 'Q') doAct({ type: 'use', item: 'potion' });
 });
-for (const b of document.querySelectorAll('#dpad button')) {
-  b.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); b.classList.add('on'); const [dx, dy] = b.dataset.d.split(',').map(Number);
-    if (state === 'play') doAct({ type: 'move', dx, dy });
-    b._rep = setTimeout(() => { b._int = setInterval(() => { if (state === 'play') doAct({ type: 'move', dx, dy }); }, 140); }, 350);       // 꾹 누르면 계속 걷는다
-  });
-  const up = () => { b.classList.remove('on'); clearTimeout(b._rep); clearInterval(b._int); };
-  b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+// ---------- 조이스틱: 아래의 조이스틱, 또는 화면을 누른 채 끌면 그 자리에 생기는 조이스틱. 누르고 있는 동안 그 방향으로 계속 걷는다 ----------
+const STEP_EVERY = 0.14;                                                   // 누르고 있으면 0.14초마다 한 걸음
+const joy = { active: false, id: null, kind: null, ax: 0, ay: 0, px: 0, py: 0, dir: null, cool: 0, suppress: false };
+// 밀어 둔 방향: 가로·세로 중 더 많이 민 쪽. 방향이 바뀔 때는 조금 더 확실히 밀어야 바뀐다(떨림 방지)
+function dirFromVec(dx, dy, dead, prev) {
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  if (Math.max(ax, ay) < dead) return null;
+  let horiz = ax >= ay;
+  if (prev) horiz = prev[1] === 0 ? !(ay > ax * 1.3) : (ax > ay * 1.3);
+  return horiz ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
 }
+function setJoyDir(dir) {
+  const changed = (!dir) !== (!joy.dir) || (dir && joy.dir && (dir[0] !== joy.dir[0] || dir[1] !== joy.dir[1]));
+  joy.dir = dir;
+  if (changed) { joy.suppress = false; joy.cool = 0; if (dir) joyTick(0); }              // 방향이 정해지면 바로 한 걸음
+}
+function joyTick(dt) {
+  if (joy.cool > 0) joy.cool -= dt;
+  if (!joy.dir || joy.suppress || state !== 'play' || !G || G.phase !== 'play' || joy.cool > 0) return;
+  joy.cool = STEP_EVERY; doAct({ type: 'move', dx: joy.dir[0], dy: joy.dir[1] });
+}
+function joyEnd() { joy.active = false; joy.id = null; joy.dir = null; joy.suppress = false; $('knob').style.transform = 'translate(0,0)'; }
+// 아래 고정 조이스틱
+const stickEl = $('stick');
+function stickVec(e) { const r = stickEl.getBoundingClientRect(), R = r.width / 2; let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R); const d = Math.hypot(dx, dy); const k = d > R * 0.7 ? R * 0.7 / d : 1; $('knob').style.transform = `translate(${dx * k}px, ${dy * k}px)`; return [dx, dy, R * 0.28]; }
+stickEl.addEventListener('pointerdown', (e) => { e.preventDefault(); try { stickEl.setPointerCapture(e.pointerId); } catch (_) {} joy.active = true; joy.id = e.pointerId; joy.kind = 'fixed'; const [dx, dy, dead] = stickVec(e); setJoyDir(dirFromVec(dx, dy, dead, null)); });
+stickEl.addEventListener('pointermove', (e) => { if (!joy.active || joy.kind !== 'fixed' || e.pointerId !== joy.id) return; const [dx, dy, dead] = stickVec(e); setJoyDir(dirFromVec(dx, dy, dead, joy.dir)); });
+const stickUp = (e) => { if (joy.kind === 'fixed' && e.pointerId === joy.id) joyEnd(); };
+stickEl.addEventListener('pointerup', stickUp); stickEl.addEventListener('pointercancel', stickUp); stickEl.addEventListener('lostpointercapture', stickUp);
 function waitOrDescend() {
   if (!G || state !== 'play' || G.phase !== 'play') return;
   if (G.tiles[G.p.y][G.p.x] === '>') doAct({ type: 'descend' }); else doAct({ type: 'wait' });
 }
 $('waitBt').addEventListener('pointerdown', (e) => { e.preventDefault(); waitOrDescend(); });
 $('bagBt').addEventListener('pointerdown', (e) => { e.preventDefault(); openBag(); });
-// 화면: 짧게 누르면 그 방향으로 한 걸음(먼 곳이면 길을 따라 한 걸음), 밀면 그 방향으로 한 걸음
-let swipe = null;
-$('wrap').addEventListener('pointerdown', (e) => { if (e.target.closest('#overlay') || e.target.closest('#top')) return; swipe = { x: e.clientX, y: e.clientY, done: false, id: e.pointerId }; });
+// 화면: 짧게 누르면 그쪽으로 한 걸음(먼 곳이면 길을 따라 한 걸음, 내 칸이면 대기·내려가기), 누른 채 끌면 그 자리에 조이스틱이 생긴다
+let touch = null;
+const FLOAT_START = 7, FLOAT_DEAD = 6, FLOAT_R = 22;
+const cpos = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * CW, (e.clientY - r.top) / r.height * CHH]; };
+$('wrap').addEventListener('pointerdown', (e) => { if (e.target.closest('#overlay') || e.target.closest('#top')) return; const [x, y] = cpos(e); touch = { x, y, moved: false, id: e.pointerId, cx: e.clientX, cy: e.clientY }; try { $('wrap').setPointerCapture(e.pointerId); } catch (_) {} });
 $('wrap').addEventListener('pointermove', (e) => {
-  if (!swipe || swipe.done || e.pointerId !== swipe.id || state !== 'play') return;
-  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y, r = canvas.getBoundingClientRect(), th = r.width * 0.07;
-  if (Math.hypot(dx, dy) > th) { swipe.done = true; if (Math.abs(dx) > Math.abs(dy)) doAct({ type: 'move', dx: Math.sign(dx), dy: 0 }); else doAct({ type: 'move', dx: 0, dy: Math.sign(dy) }); }
+  if (!touch || e.pointerId !== touch.id || state !== 'play') return;
+  const [x, y] = cpos(e), dx = x - touch.x, dy = y - touch.y;
+  if (!touch.moved && Math.hypot(dx, dy) > FLOAT_START) { touch.moved = true; joy.active = true; joy.id = e.pointerId; joy.kind = 'float'; joy.ax = touch.x; joy.ay = touch.y; }
+  if (touch.moved) { joy.px = x; joy.py = y; setJoyDir(dirFromVec(dx, dy, FLOAT_DEAD, joy.dir)); }
 });
-$('wrap').addEventListener('pointerup', (e) => {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const s = swipe; swipe = null;
-  if (s.done || state !== 'play' || !G || G.phase !== 'play') return;
+const touchEnd = (e, cancelled) => {
+  if (!touch || e.pointerId !== touch.id) return;
+  const t = touch; touch = null;
+  if (t.moved) { if (joy.kind === 'float') joyEnd(); return; }
+  if (cancelled || state !== 'play' || !G || G.phase !== 'play') return;
   const r = canvas.getBoundingClientRect(), mx = (e.clientX - r.left) / r.width * CW, my = (e.clientY - r.top) / r.height * CHH - HUD;
   if (my < 0 || my >= MAPH) return;
   const tx = Math.floor(mx / T) + camX(), ty = Math.floor(my / T) + camY();
   if (tx === G.p.x && ty === G.p.y) { waitOrDescend(); return; }
   const stepDir = pathStep(tx, ty); if (stepDir) doAct({ type: 'move', dx: stepDir[0], dy: stepDir[1] });
-});
-$('wrap').addEventListener('pointercancel', () => { swipe = null; });
+};
+$('wrap').addEventListener('pointerup', (e) => touchEnd(e, false));
+$('wrap').addEventListener('pointercancel', (e) => { touchEnd(e, true); });
 // 눌러 둔 칸까지 가는 길의 첫걸음 (아는 칸만 걷는다)
 function pathStep(tx, ty) {
   const p = G.p, prev = new Map(), q = [[p.x, p.y]]; prev.set(p.y * W + p.x, null);
@@ -170,7 +195,7 @@ function showTitle() {
     <p>한 칸씩 걷는 <b>턴제 던전</b>! 내가 한 번 움직이면 괴물도 한 번 움직여요.<br>지하 8층의 <b>용</b>을 쓰러뜨리면 이겨요 ⚔️<br>쓰러지면 처음부터 — 던전은 매번 달라요</p>
     <button class="opt" data-act="diff">🎚 난이도: ${L.DIFF[diff].name}</button>
     <button data-act="start">모험 시작</button>
-    <p style="font-size:calc(10px * var(--s,1));color:#b8a888"><span class="pc">⌨️ 방향키·WASD 걷기 · 스페이스 대기/내려가기 · E 가방 · Q 포션</span><span class="touch">👆 방향 패드나 화면을 밀기/누르기</span>${best ? ` · 최고 ${best.toLocaleString('ko-KR')}점` : ''}</p>`);
+    <p style="font-size:calc(10px * var(--s,1));color:#b8a888"><span class="pc">⌨️ 방향키·WASD 걷기 · 스페이스 대기/내려가기 · E 가방 · Q 포션</span><span class="touch">👆 조이스틱을 밀거나 화면을 끌기·누르기</span>${best ? ` · 최고 ${best.toLocaleString('ko-KR')}점` : ''}</p>`);
 }
 function cardHtml(k, i) { const p = L.PERKS[k]; const lv = G.p.perks[k] + 1; return `<button class="card" data-card="${i}"><span class="ico">${p.icon}</span><span><span class="nm">${i + 1}. ${p.name}<small>${lv > 1 ? 'Lv.' + lv : '새 능력'}</small></span><br><span class="ds">${p.desc}</span></span></button>`; }
 function showLevelUp() { showOverlay(`<h2>⭐ 레벨 ${G.p.level}!</h2><p>능력 하나를 골라요</p><div class="cards">${G.choices.map(cardHtml).join('')}</div>`); }
@@ -230,7 +255,7 @@ function handle(e) {
   if (e.t === 'move') { sfx.step(); tutorialSignal('move'); }
   else if (e.t === 'attack') { sfx.hit(); say(`${nameOf(e.kind)}에게 ${e.dmg} 피해`); fxs.push({ kind: 'num', x: e.x, y: e.y, t: 0, life: 0.7, text: String(-e.dmg), color: '#fff' }); tutorialSignal('attack'); }
   else if (e.t === 'kill') { sfx.kill(); say(`${nameOf(e.kind)} 처치! 경험치 +${e.xp}`); tutorialSignal('kill'); if (TUTORIAL) tutorialRat(); }
-  else if (e.t === 'hurt') { sfx.hurt(); shake = 0.15; say(`${nameOf(e.src)}에게 ${e.dmg} 피해를 입었다`); fxs.push({ kind: 'num', x: G.p.x, y: G.p.y, t: 0, life: 0.7, text: String(-e.dmg), color: '#ff5a5a' }); }
+  else if (e.t === 'hurt') { sfx.hurt(); joy.suppress = true; shake = 0.15; say(`${nameOf(e.src)}에게 ${e.dmg} 피해를 입었다`); fxs.push({ kind: 'num', x: G.p.x, y: G.p.y, t: 0, life: 0.7, text: String(-e.dmg), color: '#ff5a5a' }); }
   else if (e.t === 'shoot') sfx.shoot();
   else if (e.t === 'wake') say(`${nameOf(e.kind)}이(가) 깨어났다!`);
   else if (e.t === 'summon') say('용이 박쥐를 불렀다!');
@@ -328,6 +353,7 @@ function draw() {
   drawMap();
   ctx.restore();
   drawHud(); drawLog();
+  if (joy.active && joy.kind === 'float') { ctx.globalAlpha = 0.35; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(joy.ax, joy.ay, FLOAT_R, 0, Math.PI * 2); ctx.fill(); const dx = joy.px - joy.ax, dy = joy.py - joy.ay, d = Math.hypot(dx, dy) || 1, k = Math.min(1, FLOAT_R * 0.8 / d); ctx.globalAlpha = 0.65; ctx.beginPath(); ctx.arc(joy.ax + dx * k, joy.ay + dy * k, 8, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
   if (banner.t > 0) {
     ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, HUD + 90, CW, banner.sub ? 40 : 26);
     ctx.fillStyle = banner.color; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -339,7 +365,7 @@ function draw() {
 let last = 0;
 function frame(ts) {
   const dt = Math.min(0.05, (ts - (last || ts)) / 1000);
-  last = ts; clock += dt;
+  last = ts; clock += dt; joyTick(dt);
   if (banner.t > 0) banner.t -= dt;
   if (shake > 0) shake = Math.max(0, shake - dt);
   for (const f of fxs) f.t += dt;
