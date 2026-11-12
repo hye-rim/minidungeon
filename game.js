@@ -218,11 +218,18 @@ function doAct(a) {
   updateButtons();
   return ok;
 }
+// 연습: 약한 쥐를 먼저 잡아 버린 사람도 '괴물 쓰러뜨리기' 단계를 할 수 있게, 쥐를 잡으면 시작 방에 새 쥐를 (세 번까지) 내보낸다
+function tutorialRat() {
+  if (G.floor !== 1 || G.kills > 3 || G.monsters.some((m) => m.hp > 0)) return;
+  const cells = L.floorCells(G, G.rooms[0]).filter(([x, y]) => !L.occupied(G, x, y) && Math.abs(x - G.p.x) + Math.abs(y - G.p.y) >= 3);
+  if (!cells.length) return;
+  const [x, y] = cells[Math.floor(Math.random() * cells.length)], m = L.addMonster(G, 'rat', x, y, false); m.hp = m.maxhp = 2; m.atk = 1;
+}
 const nameOf = (k) => L.MONSTER[k].name;
 function handle(e) {
   if (e.t === 'move') { sfx.step(); tutorialSignal('move'); }
   else if (e.t === 'attack') { sfx.hit(); say(`${nameOf(e.kind)}에게 ${e.dmg} 피해`); fxs.push({ kind: 'num', x: e.x, y: e.y, t: 0, life: 0.7, text: String(-e.dmg), color: '#fff' }); tutorialSignal('attack'); }
-  else if (e.t === 'kill') { sfx.kill(); say(`${nameOf(e.kind)} 처치! 경험치 +${e.xp}`); tutorialSignal('kill'); }
+  else if (e.t === 'kill') { sfx.kill(); say(`${nameOf(e.kind)} 처치! 경험치 +${e.xp}`); tutorialSignal('kill'); if (TUTORIAL) tutorialRat(); }
   else if (e.t === 'hurt') { sfx.hurt(); shake = 0.15; say(`${nameOf(e.src)}에게 ${e.dmg} 피해를 입었다`); fxs.push({ kind: 'num', x: G.p.x, y: G.p.y, t: 0, life: 0.7, text: String(-e.dmg), color: '#ff5a5a' }); }
   else if (e.t === 'shoot') sfx.shoot();
   else if (e.t === 'wake') say(`${nameOf(e.kind)}이(가) 깨어났다!`);
@@ -234,7 +241,7 @@ function handle(e) {
   else if (e.t === 'equip') { sfx.pickup(); say(`${e.name}을(를) 장비했다`); tutorialSignal('equip'); }
   else if (e.t === 'use') {
     if (e.kind === 'potion') { sfx.potion(); say('포션을 마셨다'); } else if (e.kind === 'bolt') { sfx.bolt(); shake = 0.25; say('번개가 쳤다!'); } else if (e.kind === 'tele') { sfx.tele(); say('순간이동!'); } else { sfx.pickup(); say('이 층의 지도가 펼쳐졌다'); }
-    tutorialSignal(e.kind);
+    tutorialSignal('use'); tutorialSignal(e.kind);
   }
   else if (e.t === 'levelup') { sfx.levelup(); tutorialSignal('levelup'); }
   else if (e.t === 'descend') { sfx.stairs(); say(`지하 ${e.floor}층`); showBanner(e.floor === L.FLOORS ? '용의 방' : `지하 ${e.floor}층`, e.floor === L.FLOORS ? '용을 쓰러뜨리면 이겨요' : '', 1.5, e.floor === L.FLOORS ? '#ff7a5a' : '#fff'); tutorialSignal('descend'); if (e.floor === L.FLOORS) sfx.boss(); }
